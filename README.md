@@ -193,10 +193,6 @@ docker push <account-id>.dkr.ecr.eu-west-2.amazonaws.com/app1:1
 # Trigger fires automatically
 ```
 
-## Documentation
-
-- **[CLAUDE.md](CLAUDE.md)** -- Architecture principles, variable tier rules, known gaps, and development conventions
-- **[Harness-ECS-Landing-Zone-Guide.docx](Harness-ECS-Landing-Zone-Guide.docx)** -- Customer-facing architecture guide (Word format)
 
 ## References
 
