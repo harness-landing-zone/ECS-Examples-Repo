@@ -1,0 +1,18 @@
+overrides:
+  variables:
+    - name: subnet_1
+      type: String
+      value: subnet-02852411d76fc8782
+    - name: subnet_2
+      type: String
+      value: subnet-0c75bfd0049ea3d3d
+    - name: security_group
+      type: String
+      value: sg-0daa230efff0b5907
+    - name: ecr_registry_id
+      type: String
+      value: "664418987337"
+    - name: assign_public_ip
+      type: String
+      value: DISABLED
+

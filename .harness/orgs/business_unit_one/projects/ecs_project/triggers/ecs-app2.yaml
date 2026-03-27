@@ -1,0 +1,50 @@
+trigger:
+  name: ECR App2
+  identifier: ECR_App2
+  enabled: true
+  tags: {}
+  orgIdentifier: business_unit_one
+  projectIdentifier: ecs_project
+  pipelineIdentifier: ecs_deploy
+  stagesToExecute: []
+  autoAbortPreviousExecutions: true
+  source:
+    type: Artifact
+    spec:
+      type: Ecr
+      spec:
+        connectorRef: org.ecs_aws_connector
+        imagePath: app2
+        registryId: ""
+        region: eu-west-2
+        tag: <+trigger.artifact.build>
+        metaDataConditions: []
+        eventConditions:
+          - key: build
+            operator: Regex
+            value: ^\d+$
+  inputYaml: |
+    pipeline:
+      identifier: ecs_deploy
+      stages:
+        - stage:
+            identifier: deploy_dev
+            type: Deployment
+            spec:
+              service:
+                serviceRef: ecs_app2_service
+                serviceInputs:
+                  serviceDefinition:
+                    type: ECS
+                    spec:
+                      artifacts:
+                        primary:
+                          sources:
+                            - identifier: ecr_image
+                              type: Ecr
+                              spec:
+                                tag: <+trigger.artifact.build>
+                      variables:
+                        - name: ecr_registry_id
+                          type: String
+                          value: <+variable.ecr_registry_id>

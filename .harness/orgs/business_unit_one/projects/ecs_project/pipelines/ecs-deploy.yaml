@@ -1,0 +1,255 @@
+pipeline:
+  name: ECS Deploy
+  identifier: ecs_deploy
+  orgIdentifier: business_unit_one
+  projectIdentifier: ecs_project
+  description: |
+    Golden ECS Fargate deployment pipeline for all Java microservices. One pipeline — N services. Service identity comes from serviceRef. Trigger supplies only the image tag. Everything else from service variables and environment overrides.
+  tags:
+    pipeline_type: ecs-golden
+    platform: fargate
+    managed_by: terraform
+  stages:
+    - stage:
+        name: Deploy DEV
+        identifier: deploy_dev
+        description: |
+          Rolling deploy to dev. Triggered automatically by ECR push. Rollback is automatic on failure.
+        type: Deployment
+        spec:
+          deploymentType: ECS
+          environment:
+            environmentRef: Dev
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: ECS_Dev
+          execution:
+            steps:
+              - step:
+                  name: ECS Rolling Deploy
+                  identifier: ecs_rolling_deploy_dev
+                  type: EcsRollingDeploy
+                  timeout: 15m
+                  spec:
+                    forceNewDeployment: false
+                    sameAsAlreadyRunningInstances: false
+                  failureStrategies:
+                    - onFailure:
+                        errors:
+                          - AllErrors
+                        action:
+                          type: StageRollback
+              - step:
+                  name: Health Check DEV
+                  identifier: health_check_dev
+                  type: ShellScript
+                  timeout: 5m
+                  spec:
+                    shell: Bash
+                    onDelegate: true
+                    source:
+                      type: Inline
+                      spec:
+                        script: |
+                          #!/bin/bash
+                          set -e
+                          SERVICE="<+serviceVariables.service_name>"
+                          IMAGE="<+artifacts.primary.image>"
+                          TASK_ARN="<+pipeline.stages.deploy_dev.spec.execution.steps.ecs_rolling_deploy_dev.output.taskDefinitionArn>"
+                          echo "=== DEV Health Check ==="
+                          echo "Service  : ${SERVICE}"
+                          echo "Image    : ${IMAGE}"
+                          echo "Task Def : ${TASK_ARN}"
+                          # ALB health check — adjust to your routing pattern
+                          HEALTH_URL="http://<+serviceVariables.dev_alb_dns>/api/${SERVICE}/actuator/health"
+                          echo "Checking: ${HEALTH_URL}"
+
+                          for i in $(seq 1 10); do
+                            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${HEALTH_URL}" || echo "000")
+                            if [ "${HTTP_CODE}" = "200" ]; then
+                              echo "✅ Health check PASSED on attempt ${i}"
+                              exit 0
+                            fi
+                            echo "Attempt ${i}/10: HTTP ${HTTP_CODE} — retrying in 15s..."
+                            sleep 15
+                          done
+                          echo "❌ Health check FAILED after 10 attempts"
+                          exit 1
+                    environmentVariables: []
+                    outputVariables: []
+                  failureStrategies:
+                    - onFailure:
+                        errors:
+                          - AllErrors
+                        action:
+                          type: StageRollback
+            rollbackSteps:
+              - step:
+                  name: ECS Rolling Rollback DEV
+                  identifier: ecs_rolling_rollback_dev
+                  type: EcsRollingRollback
+                  timeout: 10m
+                  spec: {}
+          service:
+            serviceRef: <+input>
+            serviceInputs: <+input>
+        tags: {}
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
+    - stage:
+        name: Promote to Prod
+        identifier: approval_prod
+        description: |
+          Manual gate before production deployment. Release Managers must approve within 4 hours. On timeout the pipeline fails — never auto-promotes.
+        type: Approval
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Release Manager Approval
+                  identifier: release_manager_approval
+                  type: HarnessApproval
+                  timeout: 4h
+                  spec:
+                    approvalMessage: |
+                      **ECS Deployment — Production Promotion**
+                      Service  : <+serviceVariables.service_name>
+                      Image    : <+artifacts.primary.image>
+                      DEV Task : <+pipeline.stages.deploy_dev.spec.execution.steps.ecs_rolling_deploy_dev.output.taskDefinitionArn>
+                      DEV health checks passed. Please review before approving.
+                    includePipelineExecutionHistory: true
+                    isAutoRejectEnabled: false
+                    approvers:
+                      userGroups:
+                        - org.Release_Managers
+                        - account._account_all_users
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                    approverInputs: []
+                  failureStrategies:
+                    - onFailure:
+                        errors:
+                          - ApprovalRejection
+                        action:
+                          type: Abort
+        when:
+          pipelineStatus: Success
+        tags: {}
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: Abort
+    - stage:
+        name: Deploy PROD
+        identifier: deploy_prod
+        description: |
+          Rolling deploy to production. Only runs after approval gate. StageRollback on any failure — never auto-retry in prod.
+        type: Deployment
+        spec:
+          deploymentType: ECS
+          service:
+            useFromStage:
+              stage: deploy_dev
+          environment:
+            environmentRef: Prod
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: ECS_Prod
+          execution:
+            steps:
+              - step:
+                  name: ECS Rolling Deploy PROD
+                  identifier: ecs_rolling_deploy_prod
+                  type: EcsRollingDeploy
+                  timeout: 20m
+                  spec:
+                    forceNewDeployment: false
+                    sameAsAlreadyRunningInstances: false
+                  failureStrategies:
+                    - onFailure:
+                        errors:
+                          - AllErrors
+                        action:
+                          type: StageRollback
+              - step:
+                  name: Health Check PROD
+                  identifier: health_check_prod
+                  type: ShellScript
+                  timeout: 5m
+                  spec:
+                    shell: Bash
+                    onDelegate: true
+                    source:
+                      type: Inline
+                      spec:
+                        script: |
+                          #!/bin/bash
+                          set -e
+
+                          SERVICE="<+serviceVariables.service_name>"
+                          IMAGE="<+artifacts.primary.image>"
+                          TASK_ARN="<+pipeline.stages.deploy_prod.spec.execution.steps.ecs_rolling_deploy_prod.output.taskDefinitionArn>"
+
+                          echo "=== PROD Health Check ==="
+                          echo "Service  : ${SERVICE}"
+                          echo "Image    : ${IMAGE}"
+                          echo "Task Def : ${TASK_ARN}"
+
+                          HEALTH_URL="http://<+serviceVariables.prod_alb_dns>/api/${SERVICE}/actuator/health"
+                          echo "Checking: ${HEALTH_URL}"
+
+                          for i in $(seq 1 12); do
+                            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${HEALTH_URL}" || echo "000")
+                            if [ "${HTTP_CODE}" = "200" ]; then
+                              echo "✅ PROD health check PASSED on attempt ${i}"
+                              exit 0
+                            fi
+                            echo "Attempt ${i}/12: HTTP ${HTTP_CODE} — retrying in 15s..."
+                            sleep 15
+                          done
+
+                          echo "❌ PROD health check FAILED — initiating rollback"
+                          exit 1
+                    environmentVariables: []
+                    outputVariables: []
+                  failureStrategies:
+                    - onFailure:
+                        errors:
+                          - AllErrors
+                        action:
+                          type: StageRollback
+            rollbackSteps:
+              - step:
+                  name: ECS Rolling Rollback PROD
+                  identifier: ecs_rolling_rollback_prod
+                  type: EcsRollingRollback
+                  timeout: 10m
+                  spec: {}
+        when:
+          pipelineStatus: Success
+        tags: {}
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
+  notificationRules:
+    - name: Pipeline Events
+      identifier: pipeline_events
+      pipelineEvents:
+        - type: PipelineStart
+        - type: PipelineFailed
+        - type: PipelineSuccess
+        - type: StageFailed
+      notificationMethod:
+        type: Slack
+        spec:
+          webhookUrl: <+secrets.getValue("slack_webhook_url")>
+      enabled: true

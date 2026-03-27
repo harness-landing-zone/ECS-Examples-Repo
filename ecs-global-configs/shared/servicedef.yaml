@@ -1,0 +1,17 @@
+serviceName: <+serviceVariables.service_name>
+launchType: FARGATE
+desiredCount: <+serviceVariables.desired_count>
+deploymentConfiguration:
+  maximumPercent: 200
+  minimumHealthyPercent: 100
+  deploymentCircuitBreaker:
+    enable: true
+    rollback: true
+networkConfiguration:
+  awsvpcConfiguration:
+    subnets:
+      - <+serviceVariables.subnet_1>
+      - <+serviceVariables.subnet_2>
+    securityGroups:
+      - <+serviceVariables.security_group>
+    assignPublicIp: <+serviceVariables.assign_public_ip>

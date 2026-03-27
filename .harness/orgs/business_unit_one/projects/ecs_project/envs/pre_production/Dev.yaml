@@ -1,0 +1,6 @@
+environment:
+  name: Dev
+  identifier: Dev
+  orgIdentifier: business_unit_one
+  projectIdentifier: ecs_project
+  type: PreProduction

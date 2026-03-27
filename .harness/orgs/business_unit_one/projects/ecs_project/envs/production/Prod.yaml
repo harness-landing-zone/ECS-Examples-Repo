@@ -1,0 +1,6 @@
+environment:
+  name: Prod
+  identifier: Prod
+  orgIdentifier: business_unit_one
+  projectIdentifier: ecs_project
+  type: Production

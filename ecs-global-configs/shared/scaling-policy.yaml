@@ -1,0 +1,10 @@
+policyName: <+serviceVariables.service_name>-cpu-target-tracking
+policyType: TargetTrackingScaling
+serviceNamespace: ecs
+scalableDimension: ecs:service:DesiredCount
+targetTrackingScalingPolicyConfiguration:
+  targetValue: 70
+  predefinedMetricSpecification:
+    predefinedMetricType: ECSServiceAverageCPUUtilization
+  scaleOutCooldown: 60
+  scaleInCooldown: 300

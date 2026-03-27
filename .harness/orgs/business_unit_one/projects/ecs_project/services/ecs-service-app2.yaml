@@ -1,0 +1,124 @@
+service:
+  name: ecs-app2-service
+  identifier: ecs_app2_service
+  orgIdentifier: business_unit_one
+  projectIdentifier: ecs_project
+  serviceDefinition:
+    type: ECS
+    spec:
+      variables:
+        - name: service_name
+          type: String
+          description: ECS service name — fixed to this microservice
+          required: true
+          value: app2
+        - name: cpu
+          type: String
+          description: Fargate task CPU units (256|512|1024|2048|4096)
+          value: "1024"
+        - name: memory
+          type: String
+          description: Fargate task memory MiB
+          value: "2048"
+        - name: desired_count
+          type: String
+          value: "1"
+        - name: min_capacity
+          type: String
+          value: "1"
+        - name: max_capacity
+          type: String
+          value: "6"
+        - name: health_check_grace_period
+          type: String
+          value: "120"
+        - name: container_port
+          type: String
+          value: "8080"
+        - name: subnet_1
+          type: String
+          description: Primary subnet — set via Service Specific Override per env
+          value: ""
+        - name: subnet_2
+          type: String
+          description: Secondary subnet — set via Service Specific Override per env
+          value: ""
+        - name: security_group
+          type: String
+          description: Security group — set via Service Specific Override per env
+          value: ""
+        - name: assign_public_ip
+          type: String
+          value: DISABLED
+        - name: target_group_arn
+          type: String
+          value: ""
+        - name: ecr_registry_id
+          type: String
+          description: AWS account ID owning ECR — default is dev account, override for prod
+          value: <+input>
+      manifests:
+        - manifest:
+            identifier: taskDefinition
+            type: EcsTaskDefinition
+            spec:
+              store:
+                type: Github
+                spec:
+                  connectorRef: org.ecs_git_connector
+                  gitFetchType: Branch
+                  paths:
+                    - ecs-global-configs/shared/taskdef.yaml
+                  repoName: ecs-example
+                  branch: main
+        - manifest:
+            identifier: serviceDefinition
+            type: EcsServiceDefinition
+            spec:
+              store:
+                type: Github
+                spec:
+                  connectorRef: org.ecs_git_connector
+                  gitFetchType: Branch
+                  paths:
+                    - ecs-global-configs/shared/servicedef.yaml
+                  repoName: ecs-example
+                  branch: main
+        - manifest:
+            identifier: scalableTarget
+            type: EcsScalableTargetDefinition
+            spec:
+              store:
+                type: Github
+                spec:
+                  connectorRef: org.ecs_git_connector
+                  gitFetchType: Branch
+                  paths:
+                    - ecs-global-configs/shared/scalable-target.yaml
+                  repoName: ecs-example
+                  branch: main
+        - manifest:
+            identifier: scalingPolicy
+            type: EcsScalingPolicyDefinition
+            spec:
+              store:
+                type: Github
+                spec:
+                  connectorRef: org.ecs_git_connector
+                  gitFetchType: Branch
+                  paths:
+                    - ecs-global-configs/shared/scaling-policy.yaml
+                  repoName: ecs-example
+                  branch: main
+      artifacts:
+        primary:
+          primaryArtifactRef: ecr_image
+          sources:
+            - spec:
+                connectorRef: ecs_connector
+                imagePath: <+input>
+                tag: <+input>
+                region: eu-west-2
+                registryId: <+input>
+              identifier: ecr_image
+              type: Ecr
