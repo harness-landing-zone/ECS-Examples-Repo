@@ -193,11 +193,3 @@ docker push <account-id>.dkr.ecr.eu-west-2.amazonaws.com/app1:1
 # Trigger fires automatically
 ```
 
-
-## References
-
-- [Harness ECS Deployments](https://developer.harness.io/docs/continuous-delivery/deploy-srv-diff-platforms/aws/ecs/)
-- [Harness Service Concepts](https://developer.harness.io/docs/continuous-delivery/get-started/key-concepts/)
-- [Harness Overrides V2](https://developer.harness.io/docs/continuous-delivery/x-platform-cd-features/overrides-v2/)
-- [Harness Git Experience](https://developer.harness.io/docs/platform/git-experience/)
-- [Harness Triggers](https://developer.harness.io/docs/platform/triggers/)
