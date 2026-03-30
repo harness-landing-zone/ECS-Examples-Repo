@@ -1,0 +1,300 @@
+pipeline:
+  name: ECS Deploy Canary
+  identifier: ecs_deploy_canary
+  orgIdentifier: business_unit_one
+  projectIdentifier: ecs_project
+  description: |
+    Golden ECS Fargate Canary pipeline. Deploys a single canary task first,
+    verifies it, deletes the canary, then performs a full rolling deploy.
+    One pipeline — N services.
+  tags:
+    pipeline_type: ecs-golden-canary
+    platform: fargate
+  stages:
+    - stage:
+        name: Deploy DEV
+        identifier: deploy_dev
+        type: Deployment
+        spec:
+          deploymentType: ECS
+          service:
+            serviceRef: <+input>
+            serviceInputs: <+input>
+          environment:
+            environmentRef: Dev
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: ECS_Dev
+          execution:
+            steps:
+              - stepGroup:
+                  name: ECS Canary
+                  identifier: ECS_Canary
+                  steps:
+                    - step:
+                        name: ECS Canary Deploy
+                        identifier: ecs_canary_deploy_dev
+                        type: EcsCanaryDeploy
+                        timeout: 15m
+                        spec: {}
+                        failureStrategies:
+                          - onFailure:
+                              errors:
+                                - AllErrors
+                              action:
+                                type: StageRollback
+                    - step:
+                        name: Verify Canary DEV
+                        identifier: verify_canary_dev
+                        type: ShellScript
+                        timeout: 5m
+                        spec:
+                          shell: Bash
+                          onDelegate: true
+                          source:
+                            type: Inline
+                            spec:
+                              script: |
+                                #!/bin/bash
+                                set -e
+                                SERVICE="<+serviceVariables.service_name>"
+                                IMAGE="<+artifacts.primary.image>"
+                                echo "=== DEV Canary Verification ==="
+                                echo "Service     : ${SERVICE}"
+                                echo "Canary Svc  : ${SERVICE}Canary"
+                                echo "Image       : ${IMAGE}"
+                                echo ""
+                                echo "Canary task is running with 1 instance."
+                                echo "Production service is unchanged."
+                                echo ""
+                                echo "TODO: Replace with your actual verification:"
+                                echo "  - curl against canary task IP / service discovery"
+                                echo "  - Harness Continuous Verification step"
+                                echo "  - Synthetic test suite"
+                                echo ""
+                                echo "Canary verification PASSED (placeholder)"
+                                exit 0
+                          environmentVariables: []
+                          outputVariables: []
+                        failureStrategies:
+                          - onFailure:
+                              errors:
+                                - AllErrors
+                              action:
+                                type: StageRollback
+                      contextType: Pipeline
+                    - step:
+                        name: ECS Canary Delete
+                        identifier: ecs_canary_delete_dev
+                        type: EcsCanaryDelete
+                        timeout: 10m
+                        spec: {}
+                        failureStrategies:
+                          - onFailure:
+                              errors:
+                                - AllErrors
+                              action:
+                                type: StageRollback
+                      contextType: Pipeline
+              - step:
+                  name: ECS Rolling Deploy
+                  identifier: ecs_rolling_deploy_dev
+                  type: EcsRollingDeploy
+                  timeout: 15m
+                  spec:
+                    forceNewDeployment: false
+                    sameAsAlreadyRunningInstances: false
+                  failureStrategies:
+                    - onFailure:
+                        errors:
+                          - AllErrors
+                        action:
+                          type: StageRollback
+            rollbackSteps:
+              - step:
+                  name: ECS Canary Delete Rollback
+                  identifier: ecs_canary_delete_rollback_dev
+                  type: EcsCanaryDelete
+                  timeout: 10m
+                  spec: {}
+              - step:
+                  name: ECS Rolling Rollback DEV
+                  identifier: ecs_rolling_rollback_dev
+                  type: EcsRollingRollback
+                  timeout: 10m
+                  spec: {}
+        tags: {}
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
+    - stage:
+        name: Promote to Prod
+        identifier: approval_prod
+        type: Approval
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Release Manager Approval
+                  identifier: release_manager_approval
+                  type: HarnessApproval
+                  timeout: 4h
+                  spec:
+                    approvalMessage: |
+                      **ECS Canary Deployment — Production Promotion**
+                      Service  : <+serviceVariables.service_name>
+                      Image    : <+artifacts.primary.image>
+                      DEV canary verified and full rolling deploy completed.
+                      Please review before approving PROD.
+                    includePipelineExecutionHistory: true
+                    isAutoRejectEnabled: false
+                    approvers:
+                      userGroups:
+                        - org.Release_Managers
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                    approverInputs: []
+                  failureStrategies:
+                    - onFailure:
+                        errors:
+                          - ApprovalRejection
+                        action:
+                          type: Abort
+        when:
+          pipelineStatus: Success
+        tags: {}
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: Abort
+    - stage:
+        name: Deploy PROD
+        identifier: deploy_prod
+        type: Deployment
+        spec:
+          deploymentType: ECS
+          service:
+            useFromStage:
+              stage: deploy_dev
+          environment:
+            environmentRef: Prod
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: ECS_Prod
+          execution:
+            steps:
+              - stepGroup:
+                  name: ECS Cannary
+                  identifier: ECS_Cannary
+                  steps:
+                    - step:
+                        name: ECS Canary Deploy PROD
+                        identifier: ecs_canary_deploy_prod
+                        type: EcsCanaryDeploy
+                        timeout: 15m
+                        spec: {}
+                        failureStrategies:
+                          - onFailure:
+                              errors:
+                                - AllErrors
+                              action:
+                                type: StageRollback
+                    - step:
+                        name: Verify Canary PROD
+                        identifier: verify_canary_prod
+                        type: ShellScript
+                        timeout: 5m
+                        spec:
+                          shell: Bash
+                          onDelegate: true
+                          source:
+                            type: Inline
+                            spec:
+                              script: |
+                                #!/bin/bash
+                                set -e
+                                SERVICE="<+serviceVariables.service_name>"
+                                IMAGE="<+artifacts.primary.image>"
+                                echo "=== PROD Canary Verification ==="
+                                echo "Service     : ${SERVICE}"
+                                echo "Canary Svc  : ${SERVICE}Canary"
+                                echo "Image       : ${IMAGE}"
+                                echo ""
+                                echo "Canary verification PASSED (placeholder)"
+                                exit 0
+                          environmentVariables: []
+                          outputVariables: []
+                        failureStrategies:
+                          - onFailure:
+                              errors:
+                                - AllErrors
+                              action:
+                                type: StageRollback
+                      contextType: Pipeline
+                    - step:
+                        name: ECS Canary Delete PROD
+                        identifier: ecs_canary_delete_prod
+                        type: EcsCanaryDelete
+                        timeout: 10m
+                        spec: {}
+                        failureStrategies:
+                          - onFailure:
+                              errors:
+                                - AllErrors
+                              action:
+                                type: StageRollback
+                      contextType: Pipeline
+              - step:
+                  name: ECS Rolling Deploy PROD
+                  identifier: ecs_rolling_deploy_prod
+                  type: EcsRollingDeploy
+                  timeout: 20m
+                  spec:
+                    forceNewDeployment: false
+                    sameAsAlreadyRunningInstances: false
+                  failureStrategies:
+                    - onFailure:
+                        errors:
+                          - AllErrors
+                        action:
+                          type: StageRollback
+            rollbackSteps:
+              - step:
+                  name: ECS Canary Delete Rollback PROD
+                  identifier: ecs_canary_delete_rollback_prod
+                  type: EcsCanaryDelete
+                  timeout: 10m
+                  spec: {}
+              - step:
+                  name: ECS Rolling Rollback PROD
+                  identifier: ecs_rolling_rollback_prod
+                  type: EcsRollingRollback
+                  timeout: 10m
+                  spec: {}
+        when:
+          pipelineStatus: Success
+        tags: {}
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
+  notificationRules:
+    - name: Pipeline Events
+      identifier: pipeline_events
+      pipelineEvents:
+        - type: PipelineStart
+        - type: PipelineFailed
+        - type: PipelineSuccess
+        - type: StageFailed
+      notificationMethod:
+        type: Slack
+        spec:
+          webhookUrl: <+secrets.getValue("slack_webhook_url")>
+      enabled: true
