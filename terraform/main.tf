@@ -13,6 +13,21 @@ provider "aws" {
   region = "eu-west-2"
 }
 
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "ecs_task_assume_role" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["ecs-tasks.amazonaws.com"]
+    }
+
+    actions = ["sts:AssumeRole"]
+  }
+}
+
 variable "name" {
   description = "Name prefix for all resources"
   type        = string
@@ -24,8 +39,28 @@ variable "vpc_id" {
 }
 
 variable "subnet_ids" {
-  description = "At least 2 public subnets in different AZs"
+  description = "At least 2 public subnets in different AZs for the ALB"
   type        = list(string)
+}
+
+variable "dev_subnet_1" {
+  description = "Dev private/app subnet 1"
+  type        = string
+}
+
+variable "dev_subnet_2" {
+  description = "Dev private/app subnet 2"
+  type        = string
+}
+
+variable "prod_subnet_1" {
+  description = "Prod private/app subnet 1"
+  type        = string
+}
+
+variable "prod_subnet_2" {
+  description = "Prod private/app subnet 2"
+  type        = string
 }
 
 variable "container_port" {
@@ -65,7 +100,43 @@ locals {
 }
 
 # ------------------------------------------------------------
-# Security Group
+# IAM ROLES
+# ------------------------------------------------------------
+
+resource "aws_iam_role" "ecs_task_execution" {
+  name               = "${var.name}-ecs-task-execution-role"
+  assume_role_policy = data.aws_iam_policy_document.ecs_task_assume_role.json
+
+  tags = merge(local.common_tags, {
+    Name = "${var.name}-ecs-task-execution-role"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_task_execution_managed" {
+  role       = aws_iam_role.ecs_task_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_iam_role" "app1_task_role" {
+  name               = "${var.name}-app1-task-role"
+  assume_role_policy = data.aws_iam_policy_document.ecs_task_assume_role.json
+
+  tags = merge(local.common_tags, {
+    Name = "${var.name}-app1-task-role"
+  })
+}
+
+resource "aws_iam_role" "app2_task_role" {
+  name               = "${var.name}-app2-task-role"
+  assume_role_policy = data.aws_iam_policy_document.ecs_task_assume_role.json
+
+  tags = merge(local.common_tags, {
+    Name = "${var.name}-app2-task-role"
+  })
+}
+
+# ------------------------------------------------------------
+# SECURITY GROUPS
 # ------------------------------------------------------------
 
 resource "aws_security_group" "alb" {
@@ -113,6 +184,60 @@ resource "aws_security_group" "alb" {
   })
 }
 
+resource "aws_security_group" "ecs_dev" {
+  name_prefix = "${var.name}-ecs-dev-"
+  description = "ECS service security group for Dev"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    description     = "Allow ALB to reach dev ECS tasks"
+    from_port       = var.container_port
+    to_port         = var.container_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  egress {
+    description = "All outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.common_tags, {
+    Name        = "${var.name}-ecs-dev-sg"
+    Environment = "dev"
+  })
+}
+
+resource "aws_security_group" "ecs_prod" {
+  name_prefix = "${var.name}-ecs-prod-"
+  description = "ECS service security group for Prod"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    description     = "Allow ALB to reach prod ECS tasks"
+    from_port       = var.container_port
+    to_port         = var.container_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  egress {
+    description = "All outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.common_tags, {
+    Name        = "${var.name}-ecs-prod-sg"
+    Environment = "prod"
+  })
+}
+
 # ------------------------------------------------------------
 # ALB
 # ------------------------------------------------------------
@@ -133,7 +258,7 @@ resource "aws_lb" "this" {
 }
 
 # ------------------------------------------------------------
-# Target Groups
+# TARGET GROUPS
 # ------------------------------------------------------------
 
 resource "aws_lb_target_group" "blue" {
@@ -190,8 +315,6 @@ resource "aws_lb_target_group" "green" {
   })
 }
 
-# Separate stage/test target group. Keep this only if you want
-# the stage listener isolated from the prod green target group.
 resource "aws_lb_target_group" "test" {
   name        = substr("${var.name}-test-tg", 0, 32)
   port        = var.container_port
@@ -220,7 +343,7 @@ resource "aws_lb_target_group" "test" {
 }
 
 # ------------------------------------------------------------
-# Listeners
+# LISTENERS
 # ------------------------------------------------------------
 
 resource "aws_lb_listener" "http" {
@@ -261,8 +384,7 @@ resource "aws_lb_listener" "test" {
 }
 
 # ------------------------------------------------------------
-# Listener Rules
-# Needed if you want to populate the rule ARN fields in Harness.
+# LISTENER RULES
 # ------------------------------------------------------------
 
 resource "aws_lb_listener_rule" "prod" {
@@ -308,7 +430,7 @@ resource "aws_lb_listener_rule" "stage" {
 }
 
 # ------------------------------------------------------------
-# Outputs
+# OUTPUTS - ALB / BLUE-GREEN
 # ------------------------------------------------------------
 
 output "alb_arn" {
@@ -361,4 +483,76 @@ output "green_target_group_arn" {
 
 output "test_target_group_arn" {
   value = aws_lb_target_group.test.arn
+}
+
+# ------------------------------------------------------------
+# OUTPUTS - DEV OVERRIDES
+# ------------------------------------------------------------
+
+output "dev_subnet_1" {
+  value = var.dev_subnet_1
+}
+
+output "dev_subnet_2" {
+  value = var.dev_subnet_2
+}
+
+output "dev_security_group_id" {
+  value = aws_security_group.ecs_dev.id
+}
+
+output "dev_assign_public_ip" {
+  value = "DISABLED"
+}
+
+output "dev_execution_role_arn" {
+  value = aws_iam_role.ecs_task_execution.arn
+}
+
+output "dev_task_role_app1_arn" {
+  value = aws_iam_role.app1_task_role.arn
+}
+
+output "dev_task_role_app2_arn" {
+  value = aws_iam_role.app2_task_role.arn
+}
+
+output "dev_ecr_registry_id" {
+  value = data.aws_caller_identity.current.account_id
+}
+
+# ------------------------------------------------------------
+# OUTPUTS - PROD OVERRIDES
+# ------------------------------------------------------------
+
+output "prod_subnet_1" {
+  value = var.prod_subnet_1
+}
+
+output "prod_subnet_2" {
+  value = var.prod_subnet_2
+}
+
+output "prod_security_group_id" {
+  value = aws_security_group.ecs_prod.id
+}
+
+output "prod_assign_public_ip" {
+  value = "DISABLED"
+}
+
+output "prod_execution_role_arn" {
+  value = aws_iam_role.ecs_task_execution.arn
+}
+
+output "prod_task_role_app1_arn" {
+  value = aws_iam_role.app1_task_role.arn
+}
+
+output "prod_task_role_app2_arn" {
+  value = aws_iam_role.app2_task_role.arn
+}
+
+output "prod_ecr_registry_id" {
+  value = data.aws_caller_identity.current.account_id
 }
