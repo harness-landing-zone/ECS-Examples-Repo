@@ -75,7 +75,7 @@ resource "aws_lb" "this" {
   tags = merge(var.tags, { Name = "${var.name}-alb" })
 }
 
-resource "aws_lb_target_group" "this" {
+resource "aws_lb_target_group" "blue" {
   name        = "${var.name}-tg-blue"
   port        = var.container_port
   protocol    = "HTTP"
@@ -93,7 +93,7 @@ resource "aws_lb_target_group" "this" {
   tags = merge(var.tags, { Name = "${var.name}-tg" })
 }
 
-resource "aws_lb_target_group" "this" {
+resource "aws_lb_target_group" "green" {
   name        = "${var.name}-tg-green"
   port        = var.container_port
   protocol    = "HTTP"
