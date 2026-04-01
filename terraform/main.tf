@@ -355,6 +355,10 @@ resource "aws_lb_listener" "http" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.blue.arn
   }
+
+  lifecycle {
+    ignore_changes = [default_action]
+  }
 }
 
 resource "aws_lb_listener" "https" {
@@ -370,6 +374,10 @@ resource "aws_lb_listener" "https" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.blue.arn
   }
+
+  lifecycle {
+    ignore_changes = [default_action]
+  }
 }
 
 resource "aws_lb_listener" "test" {
@@ -380,6 +388,9 @@ resource "aws_lb_listener" "test" {
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.green.arn
+  }
+  lifecycle {
+    ignore_changes = [default_action]
   }
 }
 
@@ -392,8 +403,18 @@ resource "aws_lb_listener_rule" "prod" {
   priority     = 100
 
   action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.blue.arn
+    type = "forward"
+
+    forward {
+      target_group {
+        arn    = aws_lb_target_group.blue.arn
+        weight = 100
+      }
+      target_group {
+        arn    = aws_lb_target_group.green.arn
+        weight = 0
+      }
+    }
   }
 
   condition {
@@ -402,10 +423,15 @@ resource "aws_lb_listener_rule" "prod" {
     }
   }
 
+  lifecycle {
+    ignore_changes = [action]
+  }
+
   tags = merge(local.common_tags, {
     Name = "${var.name}-prod-rule"
     Role = "prod"
   })
+
 }
 
 resource "aws_lb_listener_rule" "stage" {
@@ -427,6 +453,9 @@ resource "aws_lb_listener_rule" "stage" {
     Name = "${var.name}-stage-rule"
     Role = "stage"
   })
+  lifecycle {
+    ignore_changes = [action]
+  }
 }
 
 # ------------------------------------------------------------
