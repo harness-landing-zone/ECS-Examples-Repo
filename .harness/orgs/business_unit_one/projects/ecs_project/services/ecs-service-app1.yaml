@@ -9,27 +9,22 @@ service:
       variables:
         - name: service_name
           type: String
-          description: ECS service name — fixed to this microservice
           required: true
           value: app1
         - name: cpu
           type: String
-          description: Fargate task CPU units (256|512|1024|2048|4096)
           value: "512"
         - name: memory
           type: String
-          description: Fargate task memory MiB
           value: "1024"
         - name: desired_count
           type: String
           value: "1"
         - name: min_capacity
           type: String
-          description: Auto-scaling minimum task count
           value: "1"
         - name: max_capacity
           type: String
-          description: Auto-scaling maximum task count
           value: "4"
         - name: health_check_grace_period
           type: String
@@ -37,29 +32,43 @@ service:
         - name: container_port
           type: String
           value: "8080"
+        - name: health_check_path
+          type: String
+          value: /actuator/health
         - name: subnet_1
           type: String
-          description: Primary subnet — set via Service Specific Override per env
           value: ""
         - name: subnet_2
           type: String
-          description: Secondary subnet — set via Service Specific Override per env
           value: ""
         - name: security_group
           type: String
-          description: Security group — set via Service Specific Override per env
           value: ""
         - name: assign_public_ip
           type: String
-          value: DISABLED
-        - name: target_group_arn
+          value: ""
+        - name: execution_role_arn
           type: String
-          description: ALB target group ARN — empty means no load balancer
+          value: ""
+        - name: task_role_arn
+          type: String
           value: ""
         - name: ecr_registry_id
           type: String
-          description: AWS account ID owning ECR — default is dev account, override for prod
-          value: <+input>
+          value: ""
+        - name: target_group_arn
+          type: String
+          value: ""
+        - name: funValue1
+          type: String
+          description: ""
+          required: false
+          value: <+pipeline.stages.provision_alb.spec.execution.steps.apply.output.outputVariables.prod_subnet_1>
+        - name: funValue2
+          type: String
+          description: ""
+          required: false
+          value: <+workspace.ECSALBDev.prod_subnet_1>
       manifests:
         - manifest:
             identifier: taskDefinition
@@ -70,10 +79,10 @@ service:
                 spec:
                   connectorRef: org.ecs_git_connector
                   gitFetchType: Branch
-                  paths:
-                    - ecs-global-configs/shared/taskdef.yaml
                   repoName: ecs-example
                   branch: main
+                  paths:
+                    - ecs-global-configs/shared/taskdef.yaml
         - manifest:
             identifier: serviceDefinition
             type: EcsServiceDefinition
@@ -83,10 +92,10 @@ service:
                 spec:
                   connectorRef: org.ecs_git_connector
                   gitFetchType: Branch
-                  paths:
-                    - ecs-global-configs/shared/servicedef.yaml
                   repoName: ecs-example
                   branch: main
+                  paths:
+                    - ecs-global-configs/shared/servicedef-rolling.yaml
         - manifest:
             identifier: scalableTarget
             type: EcsScalableTargetDefinition
@@ -96,10 +105,10 @@ service:
                 spec:
                   connectorRef: org.ecs_git_connector
                   gitFetchType: Branch
-                  paths:
-                    - ecs-global-configs/shared/scalable-target.yaml
                   repoName: ecs-example
                   branch: main
+                  paths:
+                    - ecs-global-configs/shared/scalable-target.yaml
         - manifest:
             identifier: scalingPolicy
             type: EcsScalingPolicyDefinition
@@ -109,19 +118,19 @@ service:
                 spec:
                   connectorRef: org.ecs_git_connector
                   gitFetchType: Branch
-                  paths:
-                    - ecs-global-configs/shared/scaling-policy.yaml
                   repoName: ecs-example
                   branch: main
+                  paths:
+                    - ecs-global-configs/shared/scaling-policy.yaml
       artifacts:
         primary:
           primaryArtifactRef: ecr_image
           sources:
-            - spec:
+            - identifier: ecr_image
+              type: Ecr
+              spec:
                 connectorRef: ecs_connector
-                imagePath: <+input>
+                imagePath: app1
                 tag: <+input>
                 region: eu-west-2
-                registryId: <+input>
-              identifier: ecr_image
-              type: Ecr
+                registryId: <+serviceVariables.ecr_registry_id>
