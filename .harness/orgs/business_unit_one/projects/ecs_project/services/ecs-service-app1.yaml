@@ -59,16 +59,6 @@ service:
         - name: target_group_arn
           type: String
           value: ""
-        - name: funValue1
-          type: String
-          description: ""
-          required: false
-          value: <+pipeline.stages.provision_alb.spec.execution.steps.apply.output.outputVariables.prod_subnet_1>
-        - name: funValue2
-          type: String
-          description: ""
-          required: false
-          value: <+workspace.ECSALBDev.prod_subnet_1>
       manifests:
         - manifest:
             identifier: taskDefinition
