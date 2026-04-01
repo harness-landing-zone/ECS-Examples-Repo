@@ -1,0 +1,14 @@
+overrides:
+  variables:
+    - name: task_role_arn
+      type: String
+      value: arn:aws:iam::1234456789:role/ecsTaskRole
+      required: false
+    - name: execution_role_arn
+      type: String
+      value: arn:aws:iam::1234456789:role/ecsTaskExecutionRole
+      required: false
+    - name: target_group_arn
+      type: String
+      value: <+pipeline.stages.provision_alb.spec.execution.steps.apply.output.outputVariables.blue_target_group_arn>
+      required: false

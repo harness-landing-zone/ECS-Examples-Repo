@@ -1,0 +1,10 @@
+overrides:
+  variables:
+    - name: ecr_registry_id
+      type: String
+      value: "664418987337"
+      required: false
+    - name: assign_public_ip
+      type: String
+      value: ENABLED
+      required: false

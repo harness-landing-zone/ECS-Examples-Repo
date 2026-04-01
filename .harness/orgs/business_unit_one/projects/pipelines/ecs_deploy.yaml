@@ -1,0 +1,206 @@
+pipeline:
+  name: ECS Golden
+  identifier: ecs_golden
+  orgIdentifier: business_unit_one
+  projectIdentifier: ecs_project
+  description: ECS With IACM
+  tags:
+    pipeline_type: ecs
+    platform: fargate
+  stages:
+    - stage:
+        name: Provision ALB
+        identifier: provision_alb
+        type: IACM
+        spec:
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          workspace: <+input>
+          execution:
+            steps:
+              - step:
+                  type: IACMTerraformPlugin
+                  name: Init
+                  identifier: init
+                  timeout: 5m
+                  spec:
+                    command: init
+              - step:
+                  type: IACMTerraformPlugin
+                  name: Plan
+                  identifier: plan
+                  timeout: 5m
+                  spec:
+                    command: plan
+              - step:
+                  type: IACMApproval
+                  name: Approve Infra Changes
+                  identifier: approve_infra
+                  timeout: 1h
+                  spec:
+                    autoApprove: true
+              - step:
+                  type: IACMTerraformPlugin
+                  name: Apply
+                  identifier: apply
+                  timeout: 10m
+                  spec:
+                    command: apply
+        tags: {}
+    - stage:
+        name: Deploy DEV
+        identifier: deploy_dev
+        type: Deployment
+        spec:
+          deploymentType: ECS
+          service:
+            serviceRef: <+input>
+            serviceInputs: <+input>
+          environment:
+            environmentRef: Dev
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: ECS_Dev
+          execution:
+            steps:
+              - step:
+                  type: EcsRollingDeploy
+                  name: EcsRollingDeploy
+                  identifier: EcsRollingDeploy
+                  spec:
+                    sameAsAlreadyRunningInstances: false
+                    forceNewDeployment: false
+                  timeout: 10m
+                rollbackSteps:
+                  - step:
+                      name: ECS Rolling Rollback DEV
+                      identifier: ecs_rolling_rollback_dev
+                      type: EcsRollingRollback
+                      timeout: 10m
+                      spec: {}
+            rollbackSteps: []
+        tags: {}
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
+        when:
+          pipelineStatus: Success
+          condition: "false"
+    - stage:
+        name: Promote to Prod
+        identifier: approval_prod
+        type: Approval
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Release Manager Approval
+                  identifier: release_manager_approval
+                  type: HarnessApproval
+                  timeout: 4h
+                  spec:
+                    approvalMessage: |
+                      **ECS Production Promotion**
+                      Service  : <+serviceVariables.service_name>
+                      Image    : <+artifacts.primary.image>
+                      DEV rolling deployment completed.
+                      Please review before approving PROD.
+                    includePipelineExecutionHistory: true
+                    isAutoRejectEnabled: false
+                    approvers:
+                      userGroups:
+                        - account._account_all_users
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                    approverInputs: []
+                  failureStrategies:
+                    - onFailure:
+                        errors:
+                          - ApprovalRejection
+                        action:
+                          type: Abort
+        when:
+          pipelineStatus: Success
+          condition: "false"
+        tags: {}
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: Abort
+    - stage:
+        name: Deploy PROD
+        identifier: deploy_prod
+        type: Deployment
+        spec:
+          deploymentType: ECS
+          service:
+            useFromStage:
+              stage: deploy_dev
+          environment:
+            environmentRef: Prod
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: ECS_Prod
+          execution:
+            steps:
+              - step:
+                  name: ECS Blue Green Create Service PROD
+                  identifier: ecs_bg_create_service_prod
+                  type: EcsBlueGreenCreateService
+                  timeout: 15m
+                  spec:
+                    loadBalancer: <+pipeline.stages.provision_alb.spec.execution.steps.apply.output.outputVariables.alb_name>
+                    prodListener: <+pipeline.stages.provision_alb.spec.execution.steps.apply.output.outputVariables.prod_listener_arn>
+                    prodListenerRuleArn: <+pipeline.stages.provision_alb.spec.execution.steps.apply.output.outputVariables.prod_listener_rule_arn>
+                    stageListener: <+pipeline.stages.provision_alb.spec.execution.steps.apply.output.outputVariables.stage_listener_arn>
+                    stageListenerRuleArn: <+pipeline.stages.provision_alb.spec.execution.steps.apply.output.outputVariables.stage_listener_rule_arn>
+                    enableAutoScalingInSwapStep: true
+                    updateGreenService: true
+                    sameAsAlreadyRunningInstances: false
+                    forceNewDeployment: false
+                    isTrafficShift: false
+                  failureStrategies:
+                    - onFailure:
+                        errors:
+                          - AllErrors
+                        action:
+                          type: StageRollback
+              - step:
+                  name: ECS Blue Green Swap Target Groups PROD
+                  identifier: ecs_bg_swap_prod
+                  type: EcsBlueGreenSwapTargetGroups
+                  timeout: 10m
+                  spec:
+                    doNotDownsizeOldService: false
+                  failureStrategies:
+                    - onFailure:
+                        errors:
+                          - AllErrors
+                        action:
+                          type: StageRollback
+            rollbackSteps:
+              - step:
+                  name: ECS Blue Green Rollback PROD
+                  identifier: ecs_bg_rollback_prod
+                  type: EcsBlueGreenRollback
+                  timeout: 10m
+                  spec: {}
+        when:
+          pipelineStatus: Success
+        tags: {}
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
+  allowStageExecutions: true

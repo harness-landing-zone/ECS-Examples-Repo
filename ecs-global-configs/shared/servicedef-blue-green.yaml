@@ -1,12 +1,16 @@
 serviceName: <+serviceVariables.service_name>
 launchType: FARGATE
 desiredCount: <+serviceVariables.desired_count>
+
 deploymentConfiguration:
   maximumPercent: 200
   minimumHealthyPercent: 100
   deploymentCircuitBreaker:
     enable: true
     rollback: true
+
+healthCheckGracePeriodSeconds: <+serviceVariables.health_check_grace_period>
+
 networkConfiguration:
   awsvpcConfiguration:
     subnets:
@@ -15,3 +19,8 @@ networkConfiguration:
     securityGroups:
       - <+serviceVariables.security_group>
     assignPublicIp: <+serviceVariables.assign_public_ip>
+
+loadBalancers:
+  - targetGroupArn: <+targetGroupArn>
+    containerName: <+serviceVariables.service_name>
+    containerPort: <+serviceVariables.container_port>

@@ -1,0 +1,26 @@
+overrides:
+  variables:
+    - name: ecr_registry_id
+      type: String
+      value: "664418987337"
+      required: false
+    - name: assign_public_ip
+      type: String
+      value: ENABLED
+      required: false
+  manifests:
+    - manifest:
+        identifier: bluegreen
+        type: EcsServiceDefinition
+        spec:
+          store:
+            spec:
+              connectorRef: org.ecs_git_connector
+              gitFetchType: Branch
+              branch: main
+              commitId: null
+              paths:
+                - ecs-global-configs/shared/servicedef-blue-green.yaml
+              folderPath: null
+              repoName: ECS-Example
+            type: Github

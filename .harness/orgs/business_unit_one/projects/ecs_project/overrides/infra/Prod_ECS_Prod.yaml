@@ -1,0 +1,14 @@
+overrides:
+  variables:
+    - name: subnet_1
+      type: String
+      value: <+pipeline.stages.provision_alb.spec.execution.steps.apply.output.outputVariables.dev_subnet_1>
+      required: false
+    - name: subnet_2
+      type: String
+      value: <+pipeline.stages.provision_alb.spec.execution.steps.apply.output.outputVariables.dev_subnet_2>
+      required: false
+    - name: security_group
+      type: String
+      value: <+pipeline.stages.provision_alb.spec.execution.steps.apply.output.outputVariables.dev_security_group_id>
+      required: false
