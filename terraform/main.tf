@@ -65,7 +65,7 @@ locals {
 }
 
 # ------------------------------------------------------------
-# Security Groups
+# Security Group
 # ------------------------------------------------------------
 
 resource "aws_security_group" "alb" {
@@ -90,6 +90,14 @@ resource "aws_security_group" "alb" {
       protocol    = "tcp"
       cidr_blocks = ["0.0.0.0/0"]
     }
+  }
+
+  ingress {
+    description = "Stage/Test listener inbound"
+    from_port   = 9002
+    to_port     = 9002
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
@@ -125,7 +133,7 @@ resource "aws_lb" "this" {
 }
 
 # ------------------------------------------------------------
-# Target Groups for ECS Blue/Green
+# Target Groups
 # ------------------------------------------------------------
 
 resource "aws_lb_target_group" "blue" {
@@ -182,8 +190,8 @@ resource "aws_lb_target_group" "green" {
   })
 }
 
-# Optional test listener target group if you want a separate
-# test port for Harness blue/green validation before cutover.
+# Separate stage/test target group. Keep this only if you want
+# the stage listener isolated from the prod green target group.
 resource "aws_lb_target_group" "test" {
   name        = substr("${var.name}-test-tg", 0, 32)
   port        = var.container_port
@@ -241,8 +249,6 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# Separate test listener is useful for ECS/Harness blue-green.
-# Harness can use prod listener + test listener during deployment.
 resource "aws_lb_listener" "test" {
   load_balancer_arn = aws_lb.this.arn
   port              = 9002
@@ -250,8 +256,55 @@ resource "aws_lb_listener" "test" {
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.test.arn
+    target_group_arn = aws_lb_target_group.green.arn
   }
+}
+
+# ------------------------------------------------------------
+# Listener Rules
+# Needed if you want to populate the rule ARN fields in Harness.
+# ------------------------------------------------------------
+
+resource "aws_lb_listener_rule" "prod" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.blue.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/*"]
+    }
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${var.name}-prod-rule"
+    Role = "prod"
+  })
+}
+
+resource "aws_lb_listener_rule" "stage" {
+  listener_arn = aws_lb_listener.test.arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.green.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/*"]
+    }
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${var.name}-stage-rule"
+    Role = "stage"
+  })
 }
 
 # ------------------------------------------------------------
@@ -286,8 +339,16 @@ output "https_listener_arn" {
   value = var.enable_https ? aws_lb_listener.https[0].arn : null
 }
 
-output "test_listener_arn" {
+output "stage_listener_arn" {
   value = aws_lb_listener.test.arn
+}
+
+output "prod_listener_rule_arn" {
+  value = aws_lb_listener_rule.prod.arn
+}
+
+output "stage_listener_rule_arn" {
+  value = aws_lb_listener_rule.stage.arn
 }
 
 output "blue_target_group_arn" {
