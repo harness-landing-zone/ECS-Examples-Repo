@@ -1,0 +1,21 @@
+serviceOverrides:
+  environmentRef: ${env_id}
+  serviceRef: ${service_id}
+  variables:
+    - name: target_group_arn
+      type: String
+      value: ${blue_tg_arn}
+%{ if is_blue_green ~}
+    - name: stage_target_group_arn
+      type: String
+      value: ${green_tg_arn}
+    - name: prod_listener_arn
+      type: String
+      value: ${listener_arn}
+%{ endif ~}
+    - name: task_role_arn
+      type: String
+      value: ${task_role_arn}
+    - name: execution_role_arn
+      type: String
+      value: ${execution_role_arn}

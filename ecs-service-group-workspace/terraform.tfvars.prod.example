@@ -1,0 +1,34 @@
+# terraform.tfvars.prod.example — Blue/green deployment (Prod environment)
+
+deployment_strategy = "blue_green"
+env                 = "Prod"
+vpc_name            = "gitops-hub-cluster"
+
+harness_app_org     = "business_unit_one"
+harness_app_project = "ecs_project"
+harness_app_env_id  = "Prod"
+harness_account_id  = "qIYsos1ZQO6fJMG1Ip6KJA"
+
+services = {
+  app1 = {
+    container_port     = 8081
+    health_check_path  = "/health"
+    host_header        = "app1.prod.internal"
+    task_role_arn      = "arn:aws:iam::664418987337:role/ecsTaskRole"
+    execution_role_arn = "arn:aws:iam::664418987337:role/ecsTaskExecutionRole"
+  }
+  app2 = {
+    container_port     = 8082
+    health_check_path  = "/health"
+    host_header        = "app2.prod.internal"
+    task_role_arn      = "arn:aws:iam::664418987337:role/ecsTaskRole"
+    execution_role_arn = "arn:aws:iam::664418987337:role/ecsTaskExecutionRole"
+  }
+  app3 = {
+    container_port     = 8083
+    health_check_path  = "/health"
+    host_header        = "app3.prod.internal"
+    task_role_arn      = "arn:aws:iam::664418987337:role/ecsTaskRole"
+    execution_role_arn = "arn:aws:iam::664418987337:role/ecsTaskExecutionRole"
+  }
+}
